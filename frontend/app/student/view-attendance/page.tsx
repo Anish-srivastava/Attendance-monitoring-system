@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 // XLSX is dynamically imported in the browser-only export function to avoid
 // bundling issues on the server (e.g. "fs" not found). Do not import at module top-level.
@@ -32,13 +32,32 @@ export default function ViewAttendance() {
     attendanceRate: 0,
   });
   const [searched, setSearched] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Auto-refresh functionality
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    
+    if (autoRefresh && searched && (selectedDate || filterDepartment)) {
+      interval = setInterval(() => {
+        fetchAttendanceData();
+      }, 10000); // Refresh every 10 seconds
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [autoRefresh, searched, selectedDate, filterDepartment, filterYear, filterDivision, filterSubject, filterStudentId]);
 
   const fetchAttendanceData = async () => {
     if (!selectedDate && !filterDepartment) {
-      alert("Please select at least one filter.");
+      setError("Please select at least one filter (date or department).");
       return;
     }
     setLoading(true);
+    setError(null);
+    
     try {
       const params = new URLSearchParams();
       if (selectedDate) params.set("date", selectedDate);
@@ -49,31 +68,52 @@ export default function ViewAttendance() {
       if (filterStudentId) params.set("student_id", filterStudentId);
 
       const res = await fetch(`http://127.0.0.1:5000/api/attendance?${params.toString()}`);
+      
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      
       const raw = await res.text();
       let data: any;
       try {
         data = JSON.parse(raw);
       } catch (err) {
         console.error("Failed to parse /api/attendance response as JSON. status=", res.status, "body=", raw);
-        throw err;
+        throw new Error("Invalid response from server");
       }
 
       if (data && data.success) {
         const mappedData: AttendanceRecord[] = data.attendance.map((record: any, idx: number) => ({
-          _id: record.studentId || `row-${idx}`,
+          _id: record.studentId || record.student_id || `row-${idx}`,
           studentId: record.studentId || record.student_id || "-",
           studentName: record.studentName || record.student_name || "-",
-          date: record.date || data.date || selectedDate,
-          time: record.markedAt || record.time || "-",
+          date: record.date || data.session_info?.date || selectedDate,
+          time: record.markedAt || record.marked_at || record.time || "-",
           status: record.status || "present",
           confidence: record.confidence || 0,
         }));
         setAttendanceData(mappedData);
-        setStats(data.stats);
+        setStats(data.stats || {
+          totalStudents: mappedData.length,
+          presentToday: mappedData.filter(r => r.status === 'present').length,
+          absentToday: mappedData.filter(r => r.status === 'absent').length,
+          attendanceRate: mappedData.length > 0 ? (mappedData.filter(r => r.status === 'present').length / mappedData.length) * 100 : 0
+        });
+      } else {
+        throw new Error(data?.error || "Failed to fetch attendance data");
       }
       setSearched(true);
     } catch (error) {
       console.error("Error fetching attendance:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      setError(`Failed to fetch attendance data: ${errorMessage}`);
+      setAttendanceData([]);
+      setStats({
+        totalStudents: 0,
+        presentToday: 0,
+        absentToday: 0,
+        attendanceRate: 0,
+      });
     } finally {
       setLoading(false);
     }
@@ -200,22 +240,50 @@ export default function ViewAttendance() {
                 </select>
               </div>
             </div>
-            <div className="flex gap-4">
+            <div className="flex gap-4 items-center">
               <button
                 onClick={fetchAttendanceData}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                disabled={loading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                🔍 Search
+                {loading ? "🔄 Loading..." : "🔍 Search"}
               </button>
               <button
                 onClick={exportExcel}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                disabled={attendanceData.length === 0}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 📑 Export Excel
               </button>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={autoRefresh}
+                  onChange={(e) => setAutoRefresh(e.target.checked)}
+                  className="rounded"
+                />
+                Auto-refresh (10s)
+              </label>
             </div>
           </div>
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <div className="flex items-center gap-2 text-red-800">
+              <span className="text-xl">⚠️</span>
+              <span className="font-medium">Error:</span>
+              <span>{error}</span>
+              <button
+                onClick={() => setError(null)}
+                className="ml-auto text-red-600 hover:text-red-800"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Stats */}
         {attendanceData.length > 0 && (

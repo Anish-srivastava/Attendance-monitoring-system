@@ -13,6 +13,8 @@ export default function DemoSessionPage() {
   const [status, setStatus] = useState("");
   const [facesData, setFacesData] = useState<FaceData[]>([]);
   const [recognizedStudents, setRecognizedStudents] = useState<string[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+  const [remainingTime, setRemainingTime] = useState<number | null>(null);
 
   const [form, setForm] = useState({
     date: "",
@@ -20,11 +22,20 @@ export default function DemoSessionPage() {
     department: "",
     year: "",
     division: "",
+    duration_minutes: "20",
   });
 
   const departments = ["Computer Science", "IT", "Electronics", "Mechanical", "Civil"];
   const years = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
   const divisions = ["A", "B", "C", "D"];
+  const durations = [
+    { value: "10", label: "10 minutes" },
+    { value: "15", label: "15 minutes" },
+    { value: "20", label: "20 minutes" },
+    { value: "30", label: "30 minutes" },
+    { value: "45", label: "45 minutes" },
+    { value: "60", label: "1 hour" },
+  ];
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -44,18 +55,79 @@ export default function DemoSessionPage() {
         body: JSON.stringify(form),
       });
       const data = await res.json();
-      if (data.session_id) {
-        setSessionId(data.session_id);
+      if (data.success && data.session && data.session.session_id) {
+        setSessionId(data.session.session_id);
         setStatus("✅ Session created! Click Start Recognition.");
         setSessionActive(true);
+        setRemainingTime(parseInt(form.duration_minutes));
+        startSessionTimer(data.session.session_id);
       } else {
         setStatus("❌ Failed to create session");
+        console.error("Session creation failed:", data);
       }
     } catch (err) {
       console.error(err);
       setStatus("❌ Error creating session");
     }
   };
+
+  const startSessionTimer = (sessionId: string) => {
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(`http://localhost:5000/api/attendance/session_status/${sessionId}`);
+        const data = await res.json();
+        
+        if (data.success) {
+          setRemainingTime(data.remaining_minutes);
+          
+          if (data.status === 'ended' || data.remaining_minutes <= 0) {
+            setStatus("⏰ Session has ended automatically");
+            setSessionActive(false);
+            setRecognitionStarted(false);
+            clearInterval(timer);
+          }
+        }
+      } catch (error) {
+        console.error("Error checking session status:", error);
+      }
+    }, 30000); // Check every 30 seconds
+
+    // Cleanup timer when component unmounts
+    return () => clearInterval(timer);
+  };
+
+  // Function to fetch attendance records from backend
+  const fetchAttendanceRecords = useCallback(async () => {
+    if (!sessionId) return;
+
+    try {
+      const res = await fetch(`http://localhost:5000/api/attendance/session/${sessionId}/attendance`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setAttendanceRecords(data.attendance_records);
+          // Update recognized students from backend data
+          const studentNames = data.attendance_records.map((record: any) => record.student_name);
+          setRecognizedStudents(studentNames);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching attendance records:", error);
+    }
+  }, [sessionId]);
+
+  // Periodically fetch attendance records when session is active
+  React.useEffect(() => {
+    if (!sessionActive || !sessionId) return;
+
+    // Initial fetch
+    fetchAttendanceRecords();
+
+    // Set up periodic fetching every 10 seconds
+    const interval = setInterval(fetchAttendanceRecords, 10000);
+
+    return () => clearInterval(interval);
+  }, [sessionActive, sessionId, fetchAttendanceRecords]);
 
   const handleRecognize = useCallback(
     async (imageDataUrl: string) => {
@@ -215,6 +287,18 @@ export default function DemoSessionPage() {
                 </span>
               </div>
               
+              {sessionActive && remainingTime !== null && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 border border-gray-200">
+                  <span className="text-gray-600">Time Left:</span>
+                  <span className={`font-medium ${
+                    remainingTime <= 5 ? "text-red-600" : 
+                    remainingTime <= 10 ? "text-amber-600" : "text-green-600"
+                  }`}>
+                    {remainingTime} min
+                  </span>
+                </div>
+              )}
+              
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/70 border border-gray-200">
                 <span className="text-gray-600">Students:</span>
                 <span className="font-medium text-gray-800">
@@ -307,6 +391,22 @@ export default function DemoSessionPage() {
                         <option value="">Select Division</option>
                         {divisions.map(d => (
                           <option key={d} value={d}>{d}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 mt-4">
+                    <div>
+                      <label className="block text-gray-700 font-medium mb-2">Session Duration</label>
+                      <select 
+                        name="duration_minutes" 
+                        value={form.duration_minutes} 
+                        onChange={handleChange}
+                        className="w-full p-3 rounded-lg bg-white/60 border border-gray-200 text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
+                      >
+                        {durations.map(d => (
+                          <option key={d.value} value={d.value}>{d.label}</option>
                         ))}
                       </select>
                     </div>
@@ -452,24 +552,32 @@ export default function DemoSessionPage() {
                     </div>
                     <h2 className="text-xl font-bold text-gray-800">Recognized Students</h2>
                     <span className="px-2 py-1 bg-green-100 text-green-700 text-sm rounded-lg">
-                      {recognizedStudents.length}
+                      {attendanceRecords.length}
                     </span>
                   </div>
 
-                  {recognizedStudents.length > 0 ? (
+                  {attendanceRecords.length > 0 ? (
                     <div className="max-h-64 overflow-y-auto">
                       <div className="space-y-2">
-                        {recognizedStudents.map((student, index) => (
+                        {attendanceRecords.map((record, index) => (
                           <div
-                            key={student}
+                            key={record.id || index}
                             className="flex items-center gap-3 p-3 rounded-lg bg-green-50 border border-green-200 hover:bg-green-100 transition-colors"
                           >
                             <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
                               <CheckCircle2 className="w-4 h-4 text-green-600" />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <p className="text-gray-800 font-medium truncate">{student}</p>
-                              <p className="text-green-600 text-xs">Attendance marked</p>
+                              <p className="text-gray-800 font-medium truncate">{record.student_name}</p>
+                              <div className="flex items-center gap-2 text-xs text-green-600">
+                                <span>ID: {record.student_id}</span>
+                                {record.confidence && (
+                                  <span>• Confidence: {record.confidence}%</span>
+                                )}
+                                {record.marked_at && (
+                                  <span>• {new Date(record.marked_at).toLocaleTimeString()}</span>
+                                )}
+                              </div>
                             </div>
                             <div className="text-gray-500 text-sm flex-shrink-0">
                               #{index + 1}

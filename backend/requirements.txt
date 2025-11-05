@@ -1,6 +1,6 @@
 flask
 flask-cors
-pymongo
+supabase
 deepface
 mtcnn
 numpy
@@ -8,3 +8,4 @@ opencv-python-headless
 scipy
 python-dotenv
 flask-bcrypt
+postgrest

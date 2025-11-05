@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, ArrowLeft, Play, Square, User, BarChart3 } from "lucide-react";
+import { Camera, ArrowLeft, Play, Square, User, BarChart3, Clock, Users } from "lucide-react";
 import CameraCapture, { FaceData } from "../../components/CameraCapture";
 
 interface RecognizeResult {
@@ -12,20 +12,126 @@ interface RecognizeResult {
   box?: [number, number, number, number];
 }
 
+interface ActiveSession {
+  id: string;
+  session_id: string;
+  subject: string;
+  department: string;
+  year: string;
+  division: string;
+  date: string;
+  start_time: string;
+  status: string;
+}
+
 export default function DemoSession() {
   const router = useRouter();
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [lastResult, setLastResult] = useState<RecognizeResult | null>(null);
   const [processedImage, setProcessedImage] = useState<string | null>(null);
+  const [activeSessions, setActiveSessions] = useState<ActiveSession[]>([]);
+  const [selectedSession, setSelectedSession] = useState<ActiveSession | null>(null);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [attendanceStatus, setAttendanceStatus] = useState<'idle' | 'marking' | 'success' | 'error'>('idle');
+  const [attendanceMessage, setAttendanceMessage] = useState<string>('');
+  const [studentAttendanceStatus, setStudentAttendanceStatus] = useState<{[sessionId: string]: boolean}>({});
+  const [isAttendanceMarked, setIsAttendanceMarked] = useState(false);
+  const [remainingTime, setRemainingTime] = useState<number | null>(null);
+  const [sessionTimer, setSessionTimer] = useState<NodeJS.Timeout | null>(null);
+
+  // Fetch active sessions
+  const fetchActiveSessions = useCallback(async () => {
+    setLoadingSessions(true);
+    try {
+      const res = await fetch("http://127.0.0.1:5000/api/attendance/active_sessions");
+      const data = await res.json();
+      
+      if (data.success) {
+        setActiveSessions(data.sessions || []);
+      } else {
+        console.error("Failed to fetch sessions:", data.error);
+      }
+    } catch (err) {
+      console.error("Error fetching sessions:", err);
+    } finally {
+      setLoadingSessions(false);
+    }
+  }, []);
+
+  // Start session timer to track remaining time
+  const startSessionTimer = useCallback((sessionId: string) => {
+    // Clear existing timer
+    if (sessionTimer) {
+      clearInterval(sessionTimer);
+    }
+
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(`http://127.0.0.1:5000/api/attendance/session_status/${sessionId}`);
+        const data = await res.json();
+        
+        if (data.success) {
+          setRemainingTime(data.remaining_minutes);
+          
+          if (data.status === 'ended' || data.remaining_minutes <= 0) {
+            setSelectedSession(null);
+            setIsLiveActive(false);
+            setAttendanceMessage('Session has ended');
+            clearInterval(timer);
+            setSessionTimer(null);
+            fetchActiveSessions(); // Refresh session list
+          }
+        }
+      } catch (error) {
+        console.error("Error checking session status:", error);
+      }
+    }, 30000); // Check every 30 seconds
+
+    setSessionTimer(timer);
+  }, [sessionTimer, fetchActiveSessions]);
+
+  // Auto-refresh sessions every 10 seconds
+  useEffect(() => {
+    fetchActiveSessions();
+    const interval = setInterval(fetchActiveSessions, 10000);
+    
+    // Cleanup function
+    return () => {
+      clearInterval(interval);
+      if (sessionTimer) {
+        clearInterval(sessionTimer);
+      }
+    };
+  }, [fetchActiveSessions]);
 
   const handleRecognize = useCallback(async (dataUrl: string) => {
     if (!isLiveActive) return;
 
+    // Skip if attendance is already marked for this session
+    if (selectedSession && isAttendanceMarked) {
+      return;
+    }
+
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/demo/recognize", {
+      // If a session is selected, use attendance marking endpoint
+      const endpoint = selectedSession 
+        ? "http://127.0.0.1:5000/api/attendance/real-mark"
+        : "http://127.0.0.1:5000/api/demo/recognize";
+      
+      const payload = selectedSession 
+        ? { image: dataUrl, session_id: selectedSession.session_id }
+        : { image: dataUrl };
+
+      // Set marking status for attendance
+      if (selectedSession && !isAttendanceMarked) {
+        setAttendanceStatus('marking');
+        setAttendanceMessage('Processing your attendance...');
+      }
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: dataUrl }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
 
@@ -33,14 +139,93 @@ export default function DemoSession() {
         const face = data.faces[0];
         setLastResult(face);
         setProcessedImage(data.processed_image || null);
+
+        // Handle attendance marking success
+        if (selectedSession && face.match) {
+          if (face.already_marked || face.status === 'duplicate') {
+            // Student already marked - stop further attempts
+            setIsAttendanceMarked(true);
+            setAttendanceStatus('error');
+            setAttendanceMessage(face.message || `${face.match.name} is already marked present for this session`);
+            
+            // Stop live capture for this session
+            setIsLiveActive(false);
+            
+            // Update session tracking
+            setStudentAttendanceStatus(prev => ({
+              ...prev,
+              [selectedSession.session_id]: true
+            }));
+            
+          } else if (face.status === 'marked_present') {
+            // Successfully marked attendance - stop further attempts
+            setIsAttendanceMarked(true);
+            setAttendanceStatus('success');
+            setAttendanceMessage(face.message || `Attendance marked successfully for ${face.match.name}!`);
+            
+            // Stop live capture after successful marking
+            setIsLiveActive(false);
+            
+            // Update session tracking
+            setStudentAttendanceStatus(prev => ({
+              ...prev,
+              [selectedSession.session_id]: true
+            }));
+            
+          } else {
+            setAttendanceStatus('error');
+            setAttendanceMessage(face.message || 'Failed to mark attendance. Please try again.');
+          }
+          
+          // Clear status message after 8 seconds
+          setTimeout(() => {
+            setAttendanceStatus('idle');
+            setAttendanceMessage('');
+          }, 8000);
+        }
       } else {
         setLastResult(null);
         setProcessedImage(null);
+
+        // Handle attendance marking failure
+        if (selectedSession && !isAttendanceMarked) {
+          setAttendanceStatus('error');
+          if (data.error && data.error.includes('already marked')) {
+            setIsAttendanceMarked(true);
+            setIsLiveActive(false);
+            setAttendanceMessage('You have already marked attendance for this session.');
+            
+            // Update session tracking
+            setStudentAttendanceStatus(prev => ({
+              ...prev,
+              [selectedSession.session_id]: true
+            }));
+          } else {
+            setAttendanceMessage(data.error || 'Failed to mark attendance. Please try again.');
+          }
+          
+          // Clear error message after 8 seconds
+          setTimeout(() => {
+            setAttendanceStatus('idle');
+            setAttendanceMessage('');
+          }, 8000);
+        }
       }
     } catch (err) {
       console.error(err);
+      
+      // Handle network errors for attendance
+      if (selectedSession && !isAttendanceMarked) {
+        setAttendanceStatus('error');
+        setAttendanceMessage('Network error. Please check your connection and try again.');
+        
+        setTimeout(() => {
+          setAttendanceStatus('idle');
+          setAttendanceMessage('');
+        }, 8000);
+      }
     }
-  }, [isLiveActive]);
+  }, [isLiveActive, selectedSession, isAttendanceMarked]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
@@ -62,8 +247,15 @@ export default function DemoSession() {
                   <Camera className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">Face Recognition Demo</h1>
-                  <p className="text-slate-600 text-sm font-medium">Live demonstration and testing</p>
+                  <h1 className="text-xl sm:text-2xl font-bold text-slate-800 tracking-tight">
+                    {selectedSession ? "Attendance Marking" : "Face Recognition Demo"}
+                  </h1>
+                  <p className="text-slate-600 text-sm font-medium">
+                    {selectedSession 
+                      ? `Attending: ${selectedSession.subject} - ${selectedSession.department}`
+                      : "Live demonstration and testing"
+                    }
+                  </p>
                 </div>
               </div>
             </div>
@@ -88,6 +280,191 @@ export default function DemoSession() {
           </div>
         </div>
       </header>
+
+      {/* Active Sessions Section */}
+      <div className="px-4 sm:px-6 py-4 bg-white/70 border-b border-slate-200">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <Clock className="w-5 h-5 text-slate-600" />
+              <h2 className="text-lg font-semibold text-slate-800">Active Attendance Sessions</h2>
+              {loadingSessions && (
+                <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              )}
+            </div>
+            <button
+              onClick={fetchActiveSessions}
+              className="px-3 py-2 text-sm bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {activeSessions.length === 0 ? (
+            <div className="text-center py-8 text-slate-500">
+              <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p>No active attendance sessions found</p>
+              <p className="text-sm">Teachers haven't started any sessions yet</p>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {activeSessions.map((session) => (
+                <div
+                  key={session.session_id}
+                  onClick={() => {
+                    setSelectedSession(session);
+                    // Reset attendance status when changing sessions
+                    setIsAttendanceMarked(studentAttendanceStatus[session.session_id] || false);
+                    setAttendanceStatus('idle');
+                    setAttendanceMessage('');
+                    startSessionTimer(session.session_id);
+                  }}
+                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                    selectedSession?.session_id === session.session_id
+                      ? "border-blue-500 bg-blue-50 shadow-md"
+                      : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="font-semibold text-slate-800">{session.subject}</h3>
+                    <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded-full">
+                      Active
+                    </span>
+                  </div>
+                  <div className="space-y-1 text-sm text-slate-600">
+                    <p><span className="font-medium">Department:</span> {session.department}</p>
+                    <p><span className="font-medium">Year:</span> {session.year}</p>
+                    <p><span className="font-medium">Division:</span> {session.division}</p>
+                    <p><span className="font-medium">Date:</span> {session.date}</p>
+                    {selectedSession?.session_id === session.session_id && remainingTime !== null && (
+                      <p>
+                        <span className="font-medium">Time Left:</span> 
+                        <span className={`ml-1 ${
+                          remainingTime <= 5 ? "text-red-600 font-bold" : 
+                          remainingTime <= 10 ? "text-amber-600 font-semibold" : 
+                          "text-green-600"
+                        }`}>
+                          {remainingTime} minutes
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                  {selectedSession?.session_id === session.session_id && (
+                    <div className="mt-3 text-sm text-blue-600 font-medium">
+                      ✓ Selected for attendance
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Attendance Interface - Show when session is selected */}
+          {selectedSession && (
+            <div className="mt-6 p-4 bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl border-2 border-blue-200 shadow-md">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-2 bg-blue-500 rounded-lg">
+                  <User className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800">
+                    {isAttendanceMarked ? "Attendance Completed" : "Attendance Mode Active"}
+                  </h3>
+                  <p className="text-slate-600 text-sm">
+                    {isAttendanceMarked 
+                      ? `You are already marked present for ${selectedSession.subject}`
+                      : `Ready to mark attendance for ${selectedSession.subject}`
+                    }
+                  </p>
+                </div>
+              </div>
+
+              {/* Attendance Status Messages */}
+              {attendanceMessage && (
+                <div className={`p-3 rounded-lg mb-4 ${
+                  attendanceStatus === 'success' 
+                    ? 'bg-green-100 border border-green-200 text-green-800'
+                    : attendanceStatus === 'error'
+                    ? 'bg-red-100 border border-red-200 text-red-800'
+                    : 'bg-blue-100 border border-blue-200 text-blue-800'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {attendanceStatus === 'marking' && (
+                      <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    )}
+                    <span className="font-medium">{attendanceMessage}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-slate-600 font-medium">Session:</span>
+                  <p className="text-slate-800">{selectedSession.subject}</p>
+                </div>
+                <div>
+                  <span className="text-slate-600 font-medium">Department:</span>
+                  <p className="text-slate-800">{selectedSession.department} - {selectedSession.year} {selectedSession.division}</p>
+                </div>
+                <div>
+                  <span className="text-slate-600 font-medium">Date:</span>
+                  <p className="text-slate-800">{selectedSession.date}</p>
+                </div>
+                <div>
+                  <span className="text-slate-600 font-medium">Time:</span>
+                  <p className="text-slate-800">{selectedSession.start_time}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 p-3 bg-white rounded-lg border border-slate-200">
+                <h4 className="font-semibold text-slate-800 mb-2">📋 How to mark attendance:</h4>
+                <ol className="text-slate-600 text-sm space-y-1">
+                  <li>1. Click "Start Demo" if not already active</li>
+                  <li>2. Position your face clearly in the camera</li>
+                  <li>3. Wait for face recognition to identify you</li>
+                  <li>4. Your attendance will be automatically marked</li>
+                </ol>
+              </div>
+
+              <div className="mt-4 flex gap-3">
+                <button
+                  onClick={() => {
+                    setSelectedSession(null);
+                    setAttendanceStatus('idle');
+                    setAttendanceMessage('');
+                    setIsAttendanceMarked(false);
+                  }}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
+                >
+                  Cancel Selection
+                </button>
+                {isAttendanceMarked ? (
+                  <div className="px-4 py-2 bg-green-100 text-green-800 rounded-lg font-medium flex items-center gap-2">
+                    <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                    Attendance Marked
+                  </div>
+                ) : !isLiveActive ? (
+                  <button
+                    onClick={() => setIsLiveActive(true)}
+                    className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <Play className="w-4 h-4" />
+                    Start Attendance
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setIsLiveActive(false)}
+                    className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                  >
+                    <Square className="w-4 h-4" />
+                    Stop Capture
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Controls - Moved Above */}
       <div className="px-4 sm:px-6 py-4 bg-white/50 border-b border-slate-200">
@@ -263,11 +640,13 @@ export default function DemoSession() {
 
                 {/* Instructions */}
                 <div className="p-4 rounded-xl bg-gradient-to-br from-slate-50 to-blue-50 border-2 border-slate-200">
-                  <h4 className="text-slate-800 font-bold mb-3">How it works:</h4>
+                  <h4 className="text-slate-800 font-bold mb-3">
+                    {selectedSession ? "Attendance Instructions:" : "How it works:"}
+                  </h4>
                   <ul className="text-slate-600 text-sm space-y-2">
                     <li className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
-                      Click "Start Demo" to begin face recognition
+                      {selectedSession ? "Click 'Start Demo' to begin attendance marking" : "Click 'Start Demo' to begin face recognition"}
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
@@ -275,11 +654,11 @@ export default function DemoSession() {
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
-                      Results will appear here in real-time
+                      {selectedSession ? "Your attendance will be automatically marked" : "Results will appear here in real-time"}
                     </li>
                     <li className="flex items-center gap-2">
                       <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
-                      Click "Stop Demo" to end the session
+                      {selectedSession ? "Wait for confirmation message" : "Click 'Stop Demo' to end the session"}
                     </li>
                   </ul>
                 </div>

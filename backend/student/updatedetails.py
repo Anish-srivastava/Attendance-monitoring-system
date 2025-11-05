@@ -264,8 +264,10 @@ def delete_student_alt(student_id):
 @student_update_bp.route('/api/admin/students', methods=['GET'])
 def get_all_students_admin():
     """Admin/Teacher route to view all students with filtering"""
-    db = current_app.config.get("DB")
-    students_col = db.students
+    # Use Supabase instead of MongoDB
+    supabase = current_app.config.get("SUPABASE")
+    if not supabase:
+        return jsonify({"success": False, "error": "Database connection error"}), 500
     
     try:
         # Check if user is admin or teacher
@@ -277,6 +279,55 @@ def get_all_students_admin():
                 "success": False, 
                 "error": "Unauthorized: Teacher/Admin access required"
             }), 403
+
+        # Get filtering parameters
+        department = request.args.get('department')
+        year = request.args.get('year')
+        division = request.args.get('division')
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 50))
+        
+        # Build Supabase query
+        query = supabase.table('students').select('*')
+        
+        # Apply filters
+        if department:
+            query = query.eq('department', department)
+        if year:
+            query = query.eq('year', year)
+        if division:
+            query = query.eq('division', division)
+            
+        # Apply pagination
+        start = (page - 1) * limit
+        end = start + limit - 1
+        query = query.range(start, end)
+        
+        # Execute query
+        result = query.execute()
+        students = result.data if result.data else []
+        
+        # Clean up data for response (remove sensitive fields)
+        cleaned_students = []
+        for student in students:
+            cleaned_student = {k: v for k, v in student.items() if k not in ['embeddings']}
+            cleaned_students.append(cleaned_student)
+        
+        return jsonify({
+            "success": True,
+            "students": cleaned_students,
+            "count": len(cleaned_students),
+            "page": page,
+            "limit": limit,
+            "filters": {
+                "department": department,
+                "year": year,
+                "division": division
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Failed to get students: {str(e)}"}), 500
         
         # Get query parameters for filtering
         department = request.args.get('department', '')

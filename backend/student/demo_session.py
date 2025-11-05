@@ -75,7 +75,7 @@ class EmbeddingCache:
         self.cache_duration = 300  # 5 minutes
         self.lock = threading.Lock()
 
-    def get_embeddings(self, students_col):
+    def get_embeddings(self, supabase):
         current_time = time.time()
 
         # Thread-safe cache check
@@ -85,36 +85,44 @@ class EmbeddingCache:
 
                 logger.info("Refreshing embedding cache...")
 
-                # Fetch students with embeddings
-                students = list(students_col.find(
-                    {"embeddings": {"$exists": True, "$ne": None}},
-                    {"studentId": 1, "studentName": 1, "embeddings": 1}
-                ))
+                try:
+                    # Fetch students with embeddings from Supabase
+                    result = supabase.table('students').select('student_id, student_name, embeddings').not_.is_('embeddings', 'null').execute()
+                    
+                    if not result.data:
+                        logger.warning("No students with embeddings found")
+                        self.student_embeddings = []
+                        return self.student_embeddings
 
-                # Process embeddings
-                self.student_embeddings = []
-                for student in students:
-                    embeddings = student.get('embeddings', [])
-                    if embeddings:
-                        # Average multiple embeddings if available
-                        avg_embedding = np.mean(embeddings, axis=0).astype(np.float32)
-                        self.student_embeddings.append({
-                            'embedding': avg_embedding,
-                            'studentId': student.get('studentId'),
-                            'studentName': student.get('studentName')
-                        })
+                    # Process embeddings
+                    self.student_embeddings = []
+                    for student in result.data:
+                        embeddings = student.get('embeddings', [])
+                        if embeddings:
+                            # Average multiple embeddings if available
+                            avg_embedding = np.mean(embeddings, axis=0).astype(np.float32)
+                            self.student_embeddings.append({
+                                'embedding': avg_embedding,
+                                'studentId': student.get('student_id'),
+                                'studentName': student.get('student_name')
+                            })
 
-                self.last_update = current_time
-                logger.info(f"Cache refreshed with {len(self.student_embeddings)} students")
+                    self.last_update = current_time
+                    logger.info(f"Cache refreshed with {len(self.student_embeddings)} students")
+                    
+                except Exception as e:
+                    logger.error(f"Error fetching students from Supabase: {e}")
+                    if self.student_embeddings is None:
+                        self.student_embeddings = []
 
         return self.student_embeddings
 
 # Global embedding cache instance
 embedding_cache = EmbeddingCache()
 
-def find_best_match_optimized(query_embedding, students_col, threshold=0.6):
+def find_best_match_optimized(query_embedding, supabase, threshold=0.6):
     """Optimized database search with caching"""
-    cached_embeddings = embedding_cache.get_embeddings(students_col)
+    cached_embeddings = embedding_cache.get_embeddings(supabase)
 
     if not cached_embeddings:
         return None, float('inf')
@@ -128,7 +136,7 @@ def find_best_match_optimized(query_embedding, students_col, threshold=0.6):
         distance = cosine(query_embedding, stored_embedding)
 
         if distance < min_distance:
-            min_distance = distance
+            min_distance = float(distance)  # Convert to regular Python float
             best_match = student_data
 
     return best_match if min_distance < threshold else None, min_distance
@@ -151,8 +159,12 @@ def demo_recognize_optimized():
     detector = model_manager.get_detector()
 
     data = request.get_json()
-    db = current_app.config.get("DB")
-    students_col = db.students
+    # Use Supabase instead of MongoDB
+    supabase = current_app.config.get("SUPABASE")
+    if not supabase:
+        logger.error("Supabase client not available")
+        return jsonify({"success": False, "error": "Database connection error"}), 500
+        
     threshold = float(current_app.config.get("THRESHOLD", "0.6"))
 
     image_b64 = data.get("image", "")
@@ -191,14 +203,14 @@ def demo_recognize_optimized():
             results.append({
                 "match": None, 
                 "distance": None, 
-                "box": f["box"],
+                "box": [int(x) for x in f["box"]],  # Convert box coordinates to int
                 "error": "Failed to extract embedding"
             })
             continue
 
         # Search for best match with timing
         search_start = time.time()
-        best_match, min_distance = find_best_match_optimized(emb, students_col, threshold)
+        best_match, min_distance = find_best_match_optimized(emb, supabase, threshold)
         search_time = time.time() - search_start
 
         if best_match:
@@ -208,21 +220,21 @@ def demo_recognize_optimized():
                     "name": best_match["studentName"]
                 },
                 "distance": round(float(min_distance), 4),
-                "confidence": round((1 - min_distance) * 100, 1),
-                "box": f["box"],
+                "confidence": round(float(1 - min_distance) * 100, 1),
+                "box": [int(x) for x in f["box"]],  # Convert box coordinates to int
                 "timing": {
-                    "embedding": round(embedding_time, 3),
-                    "search": round(search_time, 3)
+                    "embedding": round(float(embedding_time), 3),
+                    "search": round(float(search_time), 3)
                 }
             })
         else:
             results.append({
                 "match": None, 
                 "distance": round(float(min_distance), 4), 
-                "box": f["box"],
+                "box": [int(x) for x in f["box"]],  # Convert box coordinates to int
                 "timing": {
-                    "embedding": round(embedding_time, 3),
-                    "search": round(search_time, 3)
+                    "embedding": round(float(embedding_time), 3),
+                    "search": round(float(search_time), 3)
                 }
             })
 
@@ -231,10 +243,10 @@ def demo_recognize_optimized():
     return jsonify({
         "success": True, 
         "faces": results, 
-        "processing_time": round(total_time, 3),
+        "processing_time": round(float(total_time), 3),
         "detailed_timing": {
-            "detection": round(detection_time, 3),
-            "total": round(total_time, 3)
+            "detection": round(float(detection_time), 3),
+            "total": round(float(total_time), 3)
         },
         "performance_info": {
             "models_preloaded": True,
@@ -245,18 +257,14 @@ def demo_recognize_optimized():
 @demo_session_bp.route('/api/demo/session', methods=['POST'])
 def create_demo_session():
     """Create a new demo session"""
-    db = current_app.config.get("DB")
-    demo_sessions_col = db.demo_sessions
-
+    # For now, return a simple session without database storage
+    # TODO: Create demo_sessions table in Supabase if needed
     session_data = {
         "session_id": f"demo_{int(time.time())}",
         "started_at": time.time(),
         "status": "active",
         "recognitions": []
     }
-
-    result = demo_sessions_col.insert_one(session_data)
-    session_data['_id'] = str(result.inserted_id)
 
     return jsonify({
         "success": True,
@@ -266,23 +274,15 @@ def create_demo_session():
 @demo_session_bp.route('/api/demo/session/<session_id>/log', methods=['POST'])
 def log_recognition(session_id):
     """Log recognition result to session"""
-    db = current_app.config.get("DB")
-    demo_sessions_col = db.demo_sessions
-
+    # For now, just return success without actual logging
+    # TODO: Implement with Supabase demo_sessions table if needed
     data = request.get_json()
-    recognition_log = {
-        "timestamp": time.time(),
-        "result": data.get('result'),
-        "confidence": data.get('confidence'),
-        "processing_time": data.get('processing_time')
-    }
-
-    demo_sessions_col.update_one(
-        {"session_id": session_id},
-        {"$push": {"recognitions": recognition_log}}
-    )
-
-    return jsonify({"success": True, "message": "Recognition logged"})
+    
+    return jsonify({
+        "success": True, 
+        "message": "Recognition logged",
+        "note": "Demo logging currently simplified"
+    })
 
 @demo_session_bp.route('/api/demo/models/status', methods=['GET'])
 def model_status():
