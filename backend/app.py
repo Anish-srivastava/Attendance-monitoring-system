@@ -285,7 +285,8 @@ if __name__ == "__main__":
 
     # Final model verification before starting
     if model_manager.is_ready():
-        port = int(os.environ.get("PORT", 5000))  # Use Render's PORT or default to 5000
+        # Use Render's dynamic PORT or default to 5000 for local development
+        port = int(os.environ.get("PORT", 5000))
         logger.info(f"🎯 All systems ready! Server starting on http://0.0.0.0:{port}")
         app.run(host="0.0.0.0", port=port, debug=False)  # Set debug=False for production
     else:

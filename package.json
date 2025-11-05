@@ -1,26 +1,15 @@
 {
   "name": "attendance-management-system",
   "version": "1.0.0",
-  "description": "Full-stack face recognition attendance management system",
   "private": true,
   "scripts": {
-    "dev:backend": "cd backend && python app.py",
-    "dev:frontend": "cd frontend && npm run dev",
-    "build:backend": "cd backend && pip install -r requirements.txt",
-    "build:frontend": "cd frontend && npm install && npm run build",
-    "start:backend": "cd backend && python app.py",
-    "start:frontend": "cd frontend && npm start"
+    "build": "cd frontend && npm ci && npm run build",
+    "start": "cd frontend && npm start",
+    "dev": "cd frontend && npm run dev",
+    "postinstall": "cd frontend && npm install"
   },
-  "workspaces": [
-    "frontend"
-  ],
-  "keywords": [
-    "face-recognition",
-    "attendance",
-    "flask",
-    "nextjs",
-    "supabase"
-  ],
+  "description": "Attendance Management System with Face Recognition",
+  "keywords": ["attendance", "face-recognition", "nextjs", "flask"],
   "author": "Anish Srivastava",
   "license": "MIT"
 }
