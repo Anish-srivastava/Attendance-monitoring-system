@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { API_ENDPOINTS } from "../../../config/api";
 import MultiCameraCapture from "../../components/MultiCameraCapture";
 import { 
   ArrowLeft, 
@@ -115,7 +116,7 @@ export default function StudentRegistrationForm() {
     setStatus("Registering student...");
     try {
       const headerEmail = (typeof window !== 'undefined' && localStorage.getItem('userEmail')) || formData.email;
-      const res = await fetch("http://127.0.0.1:5000/api/register-student", {
+      const res = await fetch(API_ENDPOINTS.REGISTER_STUDENT, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",

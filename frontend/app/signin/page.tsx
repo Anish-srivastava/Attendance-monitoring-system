@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { API_ENDPOINTS } from "../../config/api";
 import { 
   LogIn, 
   Mail, 
@@ -35,7 +36,7 @@ export default function SignInPage() {
     setStatus("Signing in...");
 
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/signin", {
+      const res = await fetch(API_ENDPOINTS.SIGNIN, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

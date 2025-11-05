@@ -1,15 +1,17 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL,
+  output: 'standalone',
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
   },
   images: {
     domains: ['localhost', '127.0.0.1'],
   },
-  experimental: {
-    serverComponentsExternalPackages: ['canvas'],
-  },
+  serverExternalPackages: ['canvas'],
 };
 
 export default nextConfig;

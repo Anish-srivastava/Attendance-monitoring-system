@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { API_ENDPOINTS } from "../../../config/api";
 
 interface Student {
   _id: string;
@@ -124,7 +125,7 @@ export default function TeacherUpdateStudentDetails() {
         }
       });
 
-      const res = await fetch(`http://127.0.0.1:5000/api/teacher/students/search?${params}`, {
+      const res = await fetch(`${API_ENDPOINTS.TEACHER_STUDENTS_SEARCH}?${params}`, {
         headers: {
           "Content-Type": "application/json",
           "X-User-Type": "teacher",
@@ -158,7 +159,7 @@ export default function TeacherUpdateStudentDetails() {
     setStatus("");
 
     try {
-      const res = await fetch(`http://127.0.0.1:5000/api/teacher/student/${selectedStudent._id}`, {
+      const res = await fetch(API_ENDPOINTS.TEACHER_STUDENT(selectedStudent._id), {
         headers: {
           "Content-Type": "application/json",
           "X-User-Type": "teacher",
@@ -199,7 +200,7 @@ export default function TeacherUpdateStudentDetails() {
     setStatus("Updating student details...");
 
     try {
-      const res = await fetch(`http://127.0.0.1:5000/api/teacher/student/${student._id}`, {
+      const res = await fetch(API_ENDPOINTS.TEACHER_STUDENT(student._id), {
         method: "PUT",
         headers: { 
           "Content-Type": "application/json",
@@ -248,7 +249,7 @@ export default function TeacherUpdateStudentDetails() {
     setStatus("Deleting student...");
 
     try {
-      const res = await fetch(`http://127.0.0.1:5000/api/teacher/student/${student._id}`, {
+      const res = await fetch(API_ENDPOINTS.TEACHER_STUDENT(student._id), {
         method: "DELETE",
         headers: { 
           "Content-Type": "application/json",

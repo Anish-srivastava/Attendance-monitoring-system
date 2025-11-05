@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { API_ENDPOINTS } from "../../../config/api";
 import { 
   Users, 
   Edit3, 
@@ -50,7 +51,7 @@ export default function TeacherDashboard() {
 
   const handleLogout = async () => {
     try {
-      await fetch("http://127.0.0.1:5000/api/logout", {
+      await fetch(API_ENDPOINTS.LOGOUT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });

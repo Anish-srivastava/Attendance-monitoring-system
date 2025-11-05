@@ -4,6 +4,7 @@ import React, { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, ArrowLeft, Play, Square, User, Calendar, BookOpen, GraduationCap, Users, CheckCircle2 } from "lucide-react";
 import CameraCapture, { FaceData } from "../../components/CameraCapture";
+import { API_ENDPOINTS } from "../../../config/api";
 
 export default function DemoSessionPage() {
   const router = useRouter();
@@ -49,7 +50,7 @@ export default function DemoSessionPage() {
 
     setStatus("Creating session...");
     try {
-      const res = await fetch("http://localhost:5000/api/attendance/create_session", {
+      const res = await fetch(API_ENDPOINTS.ATTENDANCE_CREATE_SESSION, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -74,7 +75,7 @@ export default function DemoSessionPage() {
   const startSessionTimer = (sessionId: string) => {
     const timer = setInterval(async () => {
       try {
-        const res = await fetch(`http://localhost:5000/api/attendance/session_status/${sessionId}`);
+        const res = await fetch(API_ENDPOINTS.ATTENDANCE_SESSION_STATUS(sessionId));
         const data = await res.json();
         
         if (data.success) {
@@ -101,7 +102,7 @@ export default function DemoSessionPage() {
     if (!sessionId) return;
 
     try {
-      const res = await fetch(`http://localhost:5000/api/attendance/session/${sessionId}/attendance`);
+      const res = await fetch(API_ENDPOINTS.ATTENDANCE_SESSION_ATTENDANCE(sessionId));
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
@@ -142,7 +143,7 @@ export default function DemoSessionPage() {
       }
 
       try {
-        const res = await fetch("http://localhost:5000/api/attendance/real-mark", {
+        const res = await fetch(API_ENDPOINTS.ATTENDANCE_REAL_MARK, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),

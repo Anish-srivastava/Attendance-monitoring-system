@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Camera, ArrowLeft, Play, Square, User, BarChart3, Clock, Users } from "lucide-react";
 import CameraCapture, { FaceData } from "../../components/CameraCapture";
+import { API_ENDPOINTS } from "../../../config/api";
 
 interface RecognizeResult {
   match: { user_id: string; name: string } | null;
@@ -43,7 +44,7 @@ export default function DemoSession() {
   const fetchActiveSessions = useCallback(async () => {
     setLoadingSessions(true);
     try {
-      const res = await fetch("http://127.0.0.1:5000/api/attendance/active_sessions");
+      const res = await fetch(API_ENDPOINTS.ATTENDANCE_ACTIVE_SESSIONS);
       const data = await res.json();
       
       if (data.success) {
@@ -67,7 +68,7 @@ export default function DemoSession() {
 
     const timer = setInterval(async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:5000/api/attendance/session_status/${sessionId}`);
+        const res = await fetch(API_ENDPOINTS.ATTENDANCE_SESSION_STATUS(sessionId));
         const data = await res.json();
         
         if (data.success) {
@@ -115,8 +116,8 @@ export default function DemoSession() {
     try {
       // If a session is selected, use attendance marking endpoint
       const endpoint = selectedSession 
-        ? "http://127.0.0.1:5000/api/attendance/real-mark"
-        : "http://127.0.0.1:5000/api/demo/recognize";
+        ? API_ENDPOINTS.ATTENDANCE_REAL_MARK
+        : API_ENDPOINTS.DEMO_RECOGNIZE;
       
       const payload = selectedSession 
         ? { image: dataUrl, session_id: selectedSession.session_id }

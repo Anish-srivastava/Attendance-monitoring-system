@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { API_ENDPOINTS } from "../../../config/api";
 import { 
   ArrowLeft, 
   User, 
@@ -101,7 +102,7 @@ export default function UpdateStudentDetails() {
 
   const fetchStudents = async (email: string, type: "student" | "teacher") => {
     try {
-      let url = "http://127.0.0.1:5000/api/students";
+      let url = API_ENDPOINTS.STUDENTS;
       let headers: Record<string, string> = {
         "Content-Type": "application/json",
         "X-User-Type": type
@@ -112,7 +113,7 @@ export default function UpdateStudentDetails() {
         headers["X-User-Email"] = email;
       } else {
         // For teachers: get all students (admin access)
-        url = "http://127.0.0.1:5000/api/admin/students";
+        url = API_ENDPOINTS.STUDENTS;
         headers["X-User-Email"] = email;
       }
 
@@ -217,7 +218,7 @@ export default function UpdateStudentDetails() {
         headers["X-User-Email"] = userEmail;
       }
 
-      const res = await fetch(`http://127.0.0.1:5000/api/students/${selectedStudent._id}`, {
+      const res = await fetch(`${API_ENDPOINTS.STUDENTS}/${selectedStudent._id}`, {
         method: "PUT",
         headers,
         body: JSON.stringify({
@@ -262,7 +263,7 @@ export default function UpdateStudentDetails() {
     }
 
     try {
-      const res = await fetch(`http://127.0.0.1:5000/api/students/${studentId}`, {
+      const res = await fetch(`${API_ENDPOINTS.STUDENTS}/${studentId}`, {
         method: "DELETE",
         headers: { 
           "Content-Type": "application/json",

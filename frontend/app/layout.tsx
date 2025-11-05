@@ -4,9 +4,6 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Face Recognition System",
   description: "Full-stack Flask + Next.js Face Recognition App",
-  icons: {
-    icon: '/favicon.png',
-  },
 };
 
 export default function RootLayout({
