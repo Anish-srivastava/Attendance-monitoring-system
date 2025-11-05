@@ -1,15 +1,15 @@
 {
-  "/favicon.ico/route": "/favicon.ico",
   "/_not-found/page": "/_not-found",
+  "/favicon.ico/route": "/favicon.ico",
   "/dashboard/page": "/dashboard",
   "/signin/page": "/signin",
-  "/page": "/",
   "/signup/page": "/signup",
-  "/student/demo-session/page": "/student/demo-session",
-  "/student/registrationform/page": "/student/registrationform",
+  "/page": "/",
   "/student/updatedetails/page": "/student/updatedetails",
-  "/student/view-attendance/page": "/student/view-attendance",
+  "/student/demo-session/page": "/student/demo-session",
   "/teacher/dashboard/page": "/teacher/dashboard",
+  "/student/view-attendance/page": "/student/view-attendance",
   "/teacher/start-session/page": "/teacher/start-session",
-  "/teacher/updatedetails/page": "/teacher/updatedetails"
+  "/teacher/updatedetails/page": "/teacher/updatedetails",
+  "/student/registrationform/page": "/student/registrationform"
 }

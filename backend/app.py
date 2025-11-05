@@ -237,6 +237,18 @@ def handle_exception(e):
         "message": "An unexpected error occurred."
     }), 500
 
+# Root endpoint for deployment verification
+@app.route('/', methods=['GET'])
+@stable_endpoint
+def root():
+    """Root endpoint to verify deployment"""
+    return jsonify({
+        "message": "Backend running successfully!",
+        "status": "active",
+        "service": "Attendance Management System API",
+        "timestamp": time.time()
+    })
+
 # Health check endpoint
 @app.route('/health', methods=['GET'])
 @stable_endpoint

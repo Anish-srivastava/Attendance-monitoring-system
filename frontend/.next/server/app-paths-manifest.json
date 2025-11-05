@@ -1,15 +1,15 @@
 {
-  "/favicon.ico/route": "app/favicon.ico/route.js",
   "/_not-found/page": "app/_not-found/page.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
   "/dashboard/page": "app/dashboard/page.js",
   "/signin/page": "app/signin/page.js",
-  "/page": "app/page.js",
   "/signup/page": "app/signup/page.js",
-  "/student/demo-session/page": "app/student/demo-session/page.js",
-  "/student/registrationform/page": "app/student/registrationform/page.js",
+  "/page": "app/page.js",
   "/student/updatedetails/page": "app/student/updatedetails/page.js",
-  "/student/view-attendance/page": "app/student/view-attendance/page.js",
+  "/student/demo-session/page": "app/student/demo-session/page.js",
   "/teacher/dashboard/page": "app/teacher/dashboard/page.js",
+  "/student/view-attendance/page": "app/student/view-attendance/page.js",
   "/teacher/start-session/page": "app/teacher/start-session/page.js",
-  "/teacher/updatedetails/page": "app/teacher/updatedetails/page.js"
+  "/teacher/updatedetails/page": "app/teacher/updatedetails/page.js",
+  "/student/registrationform/page": "app/student/registrationform/page.js"
 }
