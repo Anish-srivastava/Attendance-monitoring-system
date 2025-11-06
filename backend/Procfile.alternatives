@@ -1,0 +1,16 @@
+# Alternative Procfile options - try these if main approach fails:
+
+# Option 1: Direct Python startup script (CURRENT)
+web: python start_render.py
+
+# Option 2: Simple Flask run
+# web: python app.py
+
+# Option 3: Direct gunicorn with pip install
+# web: pip install gunicorn==20.1.0 && python -m gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+
+# Option 4: Using Flask CLI
+# web: python -m flask run --host=0.0.0.0 --port=$PORT
+
+# Option 5: Bash script approach
+# web: bash start.sh
