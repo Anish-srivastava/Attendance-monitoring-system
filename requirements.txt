@@ -1,7 +1,2 @@
-numpy
-opencv-contrib-python
-opencv-python
-openpyxl
-pandas
-pillow
-pyttsx3
+# Requirements for Render deployment - points to backend requirements
+-r backend/requirements.txt
