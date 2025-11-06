@@ -1,0 +1,18 @@
+# Minimal requirements for basic deployment
+gunicorn==20.1.0
+flask==2.3.3
+flask-cors==4.0.0
+supabase==2.23.2
+python-dotenv==1.0.0
+flask-bcrypt==1.0.1
+requests==2.31.0
+
+# Note: AI/ML packages removed for minimal deployment
+# Add back gradually after basic deployment works:
+# deepface==0.0.79
+# mtcnn==0.1.1
+# numpy==1.24.3
+# opencv-python-headless==4.8.1.78
+# scipy==1.11.4
+# tensorflow==2.13.0
+# Pillow==10.0.1
